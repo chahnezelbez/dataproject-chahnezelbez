@@ -1,0 +1,26 @@
+# CONTEXTE ÉTUDIANT : TOUTES SÉANCES | exclusions du dépôt étudiant
+# À PRÉPARER / ADAPTER : Vérifier aussi les fichiers déjà suivis : ajouter un motif ne les retire pas de Git.
+# CONTRÔLE ATTENDU : Relire git status et les changements indexés avant chaque commit.
+#
+# Ignorer les secrets et données générées. Un fichier déjà suivi reste suivi :
+# vérifier git status et les changements indexés avant chaque commit.
+# .env.example reste versionné avec des placeholders, jamais des valeurs réelles.
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+*.pem
+*.key
+*.crt
+*.dump
+*.sql
+kubeconfig*
+rendered*.yaml
+cloud.env
+proofs/private/
+
+SPEC_PROJET.md

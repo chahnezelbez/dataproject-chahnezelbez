@@ -1,0 +1,14 @@
+# CONTEXTE ÉTUDIANT : S4-S6 | configuration commune, namespace créé
+# À PRÉPARER / ADAPTER : Conserver campus pour nom/utilisateur ; les secrets sont créés séparément.
+# CONTRÔLE ATTENDU : Vérifier les noms de clés référencés par le Deployment DB.
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: campus-config
+  namespace: campusdata
+# Paramètres non secrets. Le mot de passe et le DSN sont dans campus-secrets,
+# créé à l’exécution et volontairement absent des fichiers versionnés.
+data:
+  POSTGRES_USER: campus
+  POSTGRES_DB: campus

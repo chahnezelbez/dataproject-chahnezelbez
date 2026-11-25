@@ -1,0 +1,40 @@
+# CONTEXTE ÉTUDIANT : S1-S2 | lancer depuis la racine du dépôt étudiant
+# À PRÉPARER / ADAPTER : Générer .env ; conserver le port DB accessible seulement sur la loopback.
+# CONTRÔLE ATTENDU : API locale vers campus ; terminal de tests séparé vers campus_test.
+#
+# S1-S2 uniquement : DB et reverse proxy conteneurisés, API exécutée sur le poste.
+name: campusdata-dev
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: ${POSTGRES_DB:?required}
+    # L’API tourne sur le poste : accès DB par 127.0.0.1:5432, pas par db.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # Volume de développement distinct de pgdata dans la pile S3.
+      # Les données ne sont pas transférées automatiquement entre ces volumes.
+      - devpgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+  web:
+    image: nginxinc/nginx-unprivileged:stable-alpine
+    # Poste 127.0.0.1:8080 -> Nginx :8080 ; Nginx relaie /api vers Uvicorn :8000 du poste.
+    ports:
+      - "127.0.0.1:8080:8080"
+    # Relier le nom host.docker.internal à la passerelle du poste sous Linux.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Bind mounts en lecture seule : les modifications locales sont visibles
+      # sans reconstruire l’image ; les droits Unix du poste restent à respecter.
+      - ./web:/usr/share/nginx/html:ro
+      - ./web/dev.conf:/etc/nginx/conf.d/default.conf:ro
+volumes:
+  devpgdata:

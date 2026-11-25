@@ -1,0 +1,25 @@
+# CONTEXTE ÉTUDIANT : S4-S6 | contrôleur Traefik et Service web disponibles
+# À PRÉPARER / ADAPTER : Conserver le parcours local/tunnel ; TLS est une extension avec prérequis.
+# CONTRÔLE ATTENDU : Vérifier le point d’entrée 8081 en local ou 8082 via le tunnel cloud.
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: campus
+  namespace: campusdata
+spec:
+  # Un contrôleur doit exister pour appliquer ces règles ; K3s fournit ici Traefik.
+  ingressClassName: traefik
+  rules:
+    # Aucun host imposé dans le socle : accès local k3d ou tunnel SSH cloud.
+    # Ce manifeste seul ne crée ni domaine, ni certificat, ni authentification.
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              # Transmettre au Service web ; Nginx gère ensuite /api/ et /health/.
+              service:
+                name: web
+                port:
+                  number: 8080

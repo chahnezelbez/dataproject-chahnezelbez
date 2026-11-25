@@ -1,0 +1,18 @@
+/* CONTEXTE ÉTUDIANT : S2, styles de votre interface.
+   À ADAPTER : mise en page et états visuels sans supprimer les libellés/focus.
+   CONTRÔLE : petit écran, clavier et messages lisibles en cas d’erreur. */
+/* Socle de lisibilité ; compléter la mise en page pendant la séance 2.
+   Utiliser des classes pour les états chargement/erreur/vide ; la couleur
+   seule ne doit pas porter une information de statut. Ajouter du texte. */
+:root { font-family: system-ui, sans-serif; color-scheme: light dark; }
+body { margin: 0; line-height: 1.5; }
+/* Une largeur limitée rend les formulaires lisibles sur grand écran.
+   Le padding conserve une marge sur mobile sans largeur fixe débordante. */
+main { max-width: 64rem; margin: 2rem auto; padding: 0 1rem; }
+/* Les contrôles natifs héritent de la police pour une taille cohérente. */
+input, textarea, select, button { font: inherit; }
+button { cursor: pointer; }
+/* Le curseur ne remplace pas l'attribut disabled géré dans le JavaScript. */
+button:disabled { cursor: wait; }
+/* Garder un focus visible et vérifier le contraste en modes clair et sombre. */
+:focus-visible { outline: 3px solid #5684ff; outline-offset: 3px; }

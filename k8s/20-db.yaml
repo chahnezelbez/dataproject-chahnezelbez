@@ -1,0 +1,93 @@
+# CONTEXTE ÉTUDIANT : S4-S6 | namespace, ConfigMap et Secret déjà présents
+# À PRÉPARER / ADAPTER : Conserver un seul réplica DB ; ne pas remplacer le PVC pour résoudre une panne.
+# CONTRÔLE ATTENDU : Attendre DB prête/PVC Bound puis vérifier le jeu témoin après remplacement du Pod.
+#
+apiVersion: v1
+# Demande de stockage ; le provisionneur local-path crée le volume local.
+kind: PersistentVolumeClaim
+metadata:
+  name: pgdata
+  namespace: campusdata
+spec:
+  # ReadWriteOnce concerne le montage sur un nœud ; ce n’est pas une réplication.
+  accessModes: [ReadWriteOnce]
+  # Vérifier cette classe dans k3d/K3s ; le stockage dépend du nœud du TP.
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db
+  namespace: campusdata
+spec:
+  # Un seul serveur PostgreSQL. Ne pas scaler ce Deployment pour répliquer la DB.
+  replicas: 1
+  strategy:
+    # Arrêter l’ancien Pod avant son remplaçant ; coupure attendue pendant le remplacement.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: db
+  template:
+    metadata:
+      labels:
+        app: db
+    spec:
+      # L’application n’appelle pas l’API Kubernetes : aucun jeton à monter.
+      automountServiceAccountToken: false
+      containers:
+        - name: db
+          image: postgres:17-alpine
+          # Importer POSTGRES_USER et POSTGRES_DB depuis la ConfigMap.
+          envFrom:
+            - configMapRef:
+                name: campus-config
+          # Lire uniquement le mot de passe depuis le Secret ; ne pas le coller ici.
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: campus-secrets
+                  key: POSTGRES_PASSWORD
+          # Port d’écoute de PostgreSQL dans le conteneur.
+          ports:
+            - containerPort: 5432
+          # requests sert au placement ; limits borne les ressources du conteneur.
+          # Ces valeurs sont des points de départ à confronter aux mesures du TP.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          # Disponibilité PostgreSQL ; la readiness API vérifie en plus les tables métier.
+          readinessProbe:
+            exec:
+              command: [sh, -c, 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          # Monter le même PVC au chemin de données utilisé par PostgreSQL 17.
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: pgdata
+---
+apiVersion: v1
+# Service interne, nommé db : l’API utilise db:5432 dans son DSN.
+kind: Service
+metadata:
+  name: db
+  namespace: campusdata
+spec:
+  selector:
+    app: db
+  ports:
+    - port: 5432
+      targetPort: 5432

@@ -1,0 +1,63 @@
+# CONTEXTE ÉTUDIANT : S4-S6 | image web disponible et Service api créé
+# À PRÉPARER / ADAPTER : Utiliser l’image contenant vos fichiers ; le port interne reste 8080.
+# CONTRÔLE ATTENDU : Une page prête ne suffit pas : effectuer aussi une requête métier par le proxy.
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: campusdata
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      automountServiceAccountToken: false
+      # Même profil seccomp que l’API : filtrage des appels système par défaut du runtime.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          # Même image web qu’en Compose ; le nom api est fourni par le Service interne.
+          image: campus-web:local
+          imagePullPolicy: IfNotPresent
+          # Port d’écoute de Nginx dans le conteneur (non privilégié).
+          ports:
+            - containerPort: 8080
+          # La base nginx-unprivileged permet le fonctionnement sans root.
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          # GET / vérifie les fichiers web, pas une opération métier ni l’accès PostgreSQL.
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+# Port interne 8080 : l’Ingress cible ce Service, pas directement un Pod.
+kind: Service
+metadata:
+  name: web
+  namespace: campusdata
+spec:
+  selector:
+    app: web
+  ports:
+    - port: 8080
+      targetPort: 8080

@@ -1,0 +1,11 @@
+# CONTEXTE ÉTUDIANT : S4-S6 | contexte du cluster de votre TP
+# À PRÉPARER / ADAPTER : Conserver campusdata dans tous les fichiers et toutes les commandes.
+# CONTRÔLE ATTENDU : Vérifier le contexte avant apply ; ce fichier seul ne lance pas l’application.
+#
+apiVersion: v1
+# Regrouper les ressources ne crée pas une isolation réseau à lui seul.
+# Supprimer ce namespace supprime aussi les objets de ce TP : éviter ce geste
+# pendant les exercices de persistance.
+kind: Namespace
+metadata:
+  name: campusdata

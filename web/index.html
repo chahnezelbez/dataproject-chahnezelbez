@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fr">
+<!-- CONTEXTE ÉTUDIANT : S2, page servie par Nginx, pas ouverte en file://.
+     À RÉALISER : jeux de données, dépôt de fichier CSV, suivi des dépôts et indicateurs.
+     CONTRÔLE : parcours clavier, états vide/erreur et requêtes vers /api/datasets. -->
+<head>
+  <meta charset="utf-8">
+  <!-- Le viewport permet une mise en page adaptée aux petits écrans. -->
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CampusData</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <h1>CampusData</h1>
+    <!-- Conserver une zone de message stable : annoncer succès, attente et
+         erreurs sans obliger l'utilisateur à chercher le résultat ailleurs.
+         role=status convient aux notifications ; prévoir role=alert pour
+         une erreur nécessitant une annonce immédiate. -->
+    <p id="message" role="status">Interface à réaliser en séance 2.</p>
+
+    <!-- TODO S2 : formulaire « Nouveau jeu de données ».
+         Chaque champ possède un label relié par for/id.
+         name est obligatoire ; description et owner suivent le contrat commun.
+         Le bouton d'envoi est type=submit ; les actions annexes sont type=button. -->
+
+    <!-- TODO S2 : liste des jeux de données (nom, responsable, nombre de mesures).
+         Représenter explicitement l'état vide et l'état de chargement.
+         Sélectionner un jeu affiche ses dépôts et ses indicateurs. -->
+    <ul id="datasets"></ul>
+
+    <!-- TODO S2 : dépôt d'un fichier CSV pour le jeu sélectionné.
+         <input type="file" accept=".csv,text/csv"> avec un label explicite.
+         Afficher le statut du dépôt (pending, running, succeeded, failed)
+         et les compteurs acceptées / rejetées / doublons une fois traité. -->
+
+    <!-- TODO S2 : tableau des indicateurs par salle, filtres salle et période.
+         Utiliser <table> avec <caption> et <th scope="col"> ; un tableau vide
+         doit dire qu'aucune mesure ne correspond au filtre.
+         Ajouter la version servie (GET /api/version) pour la recette. -->
+  </main>
+  <!-- defer diffère l'exécution jusqu'à l'analyse du document HTML. -->
+  <script src="app.js" defer></script>
+</body>
+</html>

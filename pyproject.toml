@@ -1,0 +1,20 @@
+# CONTEXTE ÉTUDIANT : S2 | configuration des contrôles Python du dépôt étudiant
+# À PRÉPARER / ADAPTER : Ajouter vos tests dans api/tests ; garder les chemins cohérents avec le package app.
+# CONTRÔLE ATTENDU : Ruff contrôle le code ; pytest contrôle les comportements que vous avez testés.
+#
+# Découverte des tests et du package app depuis la racine du dépôt étudiant.
+[tool.pytest.ini_options]
+testpaths = ["api/tests"]
+pythonpath = ["api"]
+
+# Vérification statique : ne remplace pas les tests d’exécution du contrat.
+[tool.ruff]
+target-version = "py312"
+src = ["api"]
+
+# Erreurs de syntaxe/imports et ordre des imports ; éviter les suppressions globales.
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]

@@ -1,0 +1,75 @@
+# CONTEXTE ÉTUDIANT : S4-S6 | image API construite (elle contient app.worker) et schéma initialisé
+# À PRÉPARER / ADAPTER : Conserver --once : chaque Job traite les dépôts en attente puis se termine.
+# CONTRÔLE ATTENDU : Un dépôt pending passe à succeeded en moins de deux minutes ; lire les logs du Job.
+#
+apiVersion: batch/v1
+# CronJob : Kubernetes crée un Job à chaque échéance ; le Job lance un Pod qui se termine.
+# Contrairement au Deployment API, aucun processus ne reste en attente entre deux passages.
+kind: CronJob
+metadata:
+  name: ingest
+  namespace: campusdata
+spec:
+  # Toutes les minutes. Le délai entre dépôt et traitement est donc d'au plus ~1 min.
+  schedule: "*/1 * * * *"
+  # Ne pas lancer un second Job si le précédent tourne encore. Le verrou SQL
+  # SKIP LOCKED protège aussi les données si deux workers coexistent.
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  # Un passage manqué de plus de 60 s n'est pas rattrapé : le suivant suffira.
+  startingDeadlineSeconds: 60
+  jobTemplate:
+    spec:
+      # Deux nouvelles tentatives au plus si le Pod échoue (par exemple DB indisponible).
+      backoffLimit: 2
+      # Borne de durée d'un passage : un traitement bloqué ne reste pas indéfiniment.
+      activeDeadlineSeconds: 300
+      # Nettoyer les Jobs terminés au bout d'une heure.
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app: worker
+        spec:
+          # Un Job ne redémarre pas son conteneur sur place ; Kubernetes recrée un Pod.
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          # Mêmes droits que l'API : même image, même UID, aucun privilège.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: worker
+              # Même image que l'API : l'overlay cloud remplace aussi cette référence.
+              # Aucun port : le worker ne reçoit aucune requête, il interroge db:5432.
+              image: campus-api:local
+              imagePullPolicy: IfNotPresent
+              command: ["python", "-m", "app.worker", "--once"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: campus-secrets
+                      key: DATABASE_URL
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 96Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}

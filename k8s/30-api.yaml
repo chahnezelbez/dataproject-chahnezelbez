@@ -1,0 +1,113 @@
+# CONTEXTE ÉTUDIANT : S4-S6 | image métier construite et DB accessible
+# À PRÉPARER / ADAPTER : En local importer l’image ; dans le cloud utiliser l’overlay par digest.
+# CONTRÔLE ATTENDU : Initialiser le schéma avant readiness ; observer deux API prêtes et leur remplacement.
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: campusdata
+spec:
+  # Deux processus sans état local ; même DB. Pas de tolérance à la perte du nœud.
+  replicas: 2
+  # Conserver quelques révisions ; l’historique n’est pas une sauvegarde de DB.
+  revisionHistoryLimit: 3
+  # Délai de progression du rollout ; son dépassement n’impose pas un rollback automatique.
+  progressDeadlineSeconds: 120
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Conserver les réplicas disponibles pendant la mise à jour ; maxSurge
+      # nécessite de la capacité pour un Pod supplémentaire.
+      maxUnavailable: 0
+      maxSurge: 1
+  # Ces labels doivent correspondre aux labels du template ET au selector du Service.
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      automountServiceAccountToken: false
+      # UID identique au Dockerfile. Le processus n’a pas besoin des droits root.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: campus-api:local
+          # k3d : autoriser les images importées. Cloud : remplacer par des digests GHCR.
+          # Reconstruire un tag local ne redémarre pas automatiquement les Pods existants.
+          imagePullPolicy: IfNotPresent
+          # Port d’écoute d’Uvicorn dans le conteneur.
+          ports:
+            - containerPort: 8000
+          # Injecter le DSN à l’exécution. Une modification du Secret ne met pas à jour
+          # les variables d’un processus déjà lancé ; planifier sa recréation si nécessaire.
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: campus-secrets
+                  key: DATABASE_URL
+          securityContext:
+            allowPrivilegeEscalation: false
+            # Racine en lecture seule ; /tmp reste inscriptible via le volume temporaire.
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          # Vérifier le démarrage sans exiger une DB prête ; budget nominal 30 fois 2 s.
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: 8000
+            periodSeconds: 2
+            failureThreshold: 30
+          # Une panne DB ne doit pas déclencher des redémarrages inutiles de l’API.
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8000
+            periodSeconds: 10
+          # Ne router le trafic métier que lorsque DB et table sont utilisables.
+          # Un échec de readiness retire le Pod du trafic prêt, sans le redémarrer.
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            timeoutSeconds: 5
+            periodSeconds: 5
+          # 100m CPU = 0,1 CPU demandé ; 128Mi = mémoire demandée pour le placement.
+          # Une limite mémoire dépassée peut terminer le conteneur ; lire les événements.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          # Stockage temporaire lié au Pod ; ne jamais y placer de données métier.
+          emptyDir: {}
+---
+apiVersion: v1
+# Adresse stable api:8000 ; le selector choisit les Pods à desservir.
+kind: Service
+metadata:
+  name: api
+  namespace: campusdata
+spec:
+  selector:
+    app: api
+  ports:
+    - port: 8000
+      targetPort: 8000

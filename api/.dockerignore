@@ -1,0 +1,14 @@
+# CONTEXTE ÉTUDIANT : S3 | exclusions relatives au contexte api/
+# À PRÉPARER / ADAPTER : Ne pas retirer les exclusions de secrets pour corriger un fichier manquant.
+# CONTRÔLE ATTENDU : Vérifier que le code utile est copié et que les données privées restent hors image.
+#
+# Exclure secrets, caches et tests du contexte de build API.
+# Les chemins sont relatifs à api/, pas à la racine du dépôt.
+.venv
+__pycache__
+.pytest_cache
+.ruff_cache
+.env*
+tests
+*.pyc
+.git

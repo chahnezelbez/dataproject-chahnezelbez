@@ -1,0 +1,123 @@
+# CONTEXTE ÉTUDIANT : S6 | modèle inactif tant qu’il reste dans github-workflows/
+# À PRÉPARER / ADAPTER : Copier vers .github/workflows/ci.yaml, ajouter init_db puis vos tests métier.
+# CONTRÔLE ATTENDU : Relier le run au commit et aux images ; le déploiement cloud reste manuel.
+#
+# Exemple de pipeline à adapter après implémentation du métier.
+# Il publie des images ; il ne déploie pas automatiquement sur AWS.
+# Copier vers .github/workflows/ci.yaml dans le dépôt étudiant.
+name: CampusData CI
+# Les PR exécutent les contrôles ; seul un push sur main peut publier les images.
+on:
+  push:
+    branches: [main]
+  pull_request:
+# Droits par défaut minimaux. Le job image reçoit séparément packages: write.
+permissions:
+  contents: read
+# Un nouveau push sur la même branche annule le run précédent devenu inutile.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    name: Lint et tests sur PostgreSQL
+    runs-on: ubuntu-latest
+    # PostgreSQL éphémère dédié aux tests de ce job ; aucun accès à la DB cloud.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: campus
+          # Valeur de test sans réutilisation ailleurs ; ce n’est pas un secret de production.
+          POSTGRES_PASSWORD: ci-only-ephemeral
+          POSTGRES_DB: campus_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U campus -d campus_test"
+          --health-interval 5s --health-timeout 3s --health-retries 12
+    # Le job tourne sur le runner : localhost utilise le port du service publié.
+    env:
+      DATABASE_URL: postgresql+psycopg://campus:ci-only-ephemeral@localhost:5432/campus_test
+    steps:
+      - name: Récupérer le code du commit
+        uses: actions/checkout@v5
+      - name: Installer Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          # Le cache accélère l’installation ; le lock reste la source des versions.
+          cache: pip
+          cache-dependency-path: api/requirements-dev.lock
+      # Installer le lock de développement, qui inclut l’application, pytest et Ruff.
+      - name: Installer les dépendances verrouillées
+        run: python -m pip install -r api/requirements-dev.lock
+      - name: Analyse statique Ruff
+        run: python -m ruff check api
+      # TODO S6 : créer app.init_db en S2 puis insérer son exécution ici,
+      # avec working-directory: api (voir séance 6, tâche 2).
+      # Une CI verte avec seulement les deux tests fournis ne valide ni l'API métier ni l'ingestion.
+      - name: Tests pytest
+        working-directory: api
+        run: python -m pytest -q
+  image:
+    name: Construire et publier les images
+    # La publication dépend du succès des tests ; ne pas supprimer cette dépendance.
+    needs: test
+    # Cette condition empêche la publication depuis une PR, même si ses tests passent.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Récupérer le code du commit
+        uses: actions/checkout@v5
+      # Préparer les builds multiarchitectures ; peut allonger la construction.
+      - name: Activer l’émulation QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Préparer Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Se connecter à GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # Jeton fourni au run par GitHub ; pas de PAT personnel en dur dans le workflow.
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Les noms de dépôt GHCR sont normalisés en minuscules ; GITHUB_OUTPUT
+      # transmet la valeur aux étapes suivantes via steps.image.outputs.prefix.
+      - name: Calculer le préfixe d’image en minuscules
+        id: image
+        shell: bash
+        run: echo "prefix=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Construire et publier l’image API
+        id: api
+        uses: docker/build-push-action@v6
+        with:
+          context: ./api
+          push: true
+          platforms: linux/amd64,linux/arm64
+          # Associer l’image au commit testé. Relever ensuite son digest pour la promotion.
+          tags: ${{ steps.image.outputs.prefix }}-api:${{ github.sha }}
+          build-args: APP_VERSION=${{ github.sha }}
+      - name: Construire et publier l’image web
+        id: web
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.image.outputs.prefix }}-web:${{ github.sha }}
+      # Le résumé du run conserve les références à promouvoir ; il ne déploie rien.
+      # Comparer ces digests avec docker buildx imagetools inspect avant la promotion.
+      - name: Résumer les images publiées
+        shell: bash
+        run: |
+          {
+            echo "### Images publiées pour ${GITHUB_SHA}"
+            echo ""
+            echo "| Composant | Référence | Digest |"
+            echo "|---|---|---|"
+            echo "| API | \`${{ steps.image.outputs.prefix }}-api:${GITHUB_SHA}\` | \`${{ steps.api.outputs.digest }}\` |"
+            echo "| Web | \`${{ steps.image.outputs.prefix }}-web:${GITHUB_SHA}\` | \`${{ steps.web.outputs.digest }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

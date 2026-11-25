@@ -1,0 +1,10 @@
+# CONTEXTE ÉTUDIANT : PRÉPARATION | liste des dépendances directes runtime
+# À PRÉPARER / ADAPTER : Si vous adaptez cette liste, régénérer runtime et développement ensemble.
+# CONTRÔLE ATTENDU : Installer les locks résultants et relancer lint/tests avant remise.
+#
+# Dépendances directes autorisées ; les versions installées sont dans requirements.lock.
+# Modifier ce fichier puis régénérer les deux locks ensemble selon preparation.md.
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+SQLAlchemy>=2.0,<2.1
+psycopg[binary]>=3.2,<4

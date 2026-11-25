@@ -1,0 +1,10 @@
+# CONTEXTE ÉTUDIANT : PRÉPARATION | dépendances de test et de vérification
+# À PRÉPARER / ADAPTER : Le runtime est inclus par -r ; ne pas supprimer cet héritage involontairement.
+# CONTRÔLE ATTENDU : Utiliser le lock de développement dans votre venv et dans le job CI test.
+#
+# Étendre les dépendances runtime pour les tests et la vérification statique.
+# Ne pas installer les outils de développement dans l’image API de livraison.
+-r requirements.in
+pytest>=8,<10
+httpx>=0.27,<1
+ruff>=0.9,<1
