@@ -1,6 +1,6 @@
 # CONTEXTE ÉTUDIANT : S2 | formes JSON et validation des entrées
-# À PRÉPARER / ADAPTER : garder les règles alignées sur SPEC_PROJET.md §3, §5 et le tableau de nullité.
-# CONTRÔLE ATTENDU : F01-F05 (création de jeu) et F10 (réponse de dépôt sans content).
+# À PRÉPARER / ADAPTER : garder les règles alignées sur SPEC_PROJET.md §3, §4 et §5.
+# CONTRÔLE ATTENDU : F01-F05, F10, F20-F24 ; moyennes à 1 décimale, rooms: [].
 #
 """Schémas Pydantic de CampusData.
 
@@ -77,3 +77,32 @@ class IngestionRead(BaseModel):
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+
+
+class RoomStats(BaseModel):
+    """Une ligne du tableau d'indicateurs décrit en §4."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    room: str
+    measurements: int
+    # func.round(..., 1) est calculé en SQL ; float garde un nombre JSON.
+    co2_avg: float
+    co2_min: int
+    co2_max: int
+    temperature_avg: float
+    humidity_avg: float
+    last_measured_at: datetime
+
+
+class StatsRead(BaseModel):
+    """Réponse GET /api/datasets/{id}/stats, avec filtres renvoyés à l'appelant."""
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    dataset_id: UUID
+    room: str | None = None
+    # "from" est un mot réservé en Python : alias JSON et champ interne from_.
+    from_: datetime | None = Field(default=None, alias="from")
+    to: datetime | None = None
+    rooms: list[RoomStats]

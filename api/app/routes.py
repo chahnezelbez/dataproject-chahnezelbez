@@ -1,6 +1,6 @@
-# CONTEXTE ÉTUDIANT : S2 | routes HTTP des jeux et dépôts
-# À PRÉPARER / ADAPTER : ne pas ajouter stats/liste dépôts/retry (Tâche 5).
-# CONTRÔLE ATTENDU : F01-F12 ; 415 → 413 → 422 → 404 dans l'ordre du contrat.
+# CONTEXTE ÉTUDIANT : S2 | routes HTTP des jeux, dépôts et indicateurs
+# À PRÉPARER / ADAPTER : traduire les exceptions métier en codes du §5.
+# CONTRÔLE ATTENDU : F01-F24 ; 415 → 413 → 422 → 404 ; période invalide en 422.
 #
 """Couche HTTP de CampusData.
 
@@ -8,6 +8,8 @@ Les routes valident la requête, appellent services.py et choisissent le code
 de réponse. Aucun SQL ici, aucune lecture CSV : le corps n'est que stocké.
 Les erreurs métier deviennent des HTTPException avec les messages exacts.
 """
+from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -16,11 +18,12 @@ from sqlalchemy.orm import Session
 from . import services
 from .database import get_session
 from .models import Dataset, Ingestion
-from .schemas import DatasetCreate, DatasetRead, IngestionRead
+from .schemas import DatasetCreate, DatasetRead, IngestionRead, StatsRead
 
 MAX_UPLOAD_BYTES = 1_048_576
 CSV_CONTENT_TYPE = "text/csv"
 FILENAME_PATTERN = r"^[^/\\]+$"
+IngestionStatus = Literal["pending", "running", "succeeded", "failed"]
 
 
 async def raw_body(request: Request) -> bytes:
@@ -45,6 +48,21 @@ def _filename_validation_error(
     if ctx is not None:
         error["ctx"] = ctx
     return HTTPException(status_code=422, detail=[error])
+
+
+def _naive_datetime_error(name: str, value: datetime) -> HTTPException:
+    """422 liste pour un filtre de date sans fuseau, comme §4 l'exige."""
+    return HTTPException(
+        status_code=422,
+        detail=[
+            {
+                "type": "datetime_parsing",
+                "loc": ["query", name],
+                "msg": "Input should be an ISO 8601 datetime with a timezone",
+                "input": value.isoformat(),
+            }
+        ],
+    )
 
 
 router = APIRouter(prefix="/api")
@@ -147,6 +165,70 @@ def create_ingestion(
     except services.DatasetNotFound:
         raise HTTPException(status_code=404, detail="Dataset not found") from None
 
-    # La ressource pointée sera exposée en Tâche 5 ; le lien est déjà valide.
+    # GET /api/ingestions/{id} existe désormais : le Location est suivable.
     response.headers["Location"] = f"/api/ingestions/{ingestion.id}"
     return ingestion
+
+
+@router.get("/datasets/{dataset_id}/ingestions", response_model=list[IngestionRead])
+def list_dataset_ingestions(
+    dataset_id: UUID,
+    # Literal : un statut inconnu est un 422 FastAPI avant le 404 du service.
+    status: IngestionStatus | None = Query(None),
+    session: Session = Depends(get_session),
+) -> list[Ingestion]:
+    """Lister les dépôts d'un jeu, du plus récent au plus ancien."""
+    try:
+        return services.list_ingestions(session, dataset_id, status)
+    except services.DatasetNotFound:
+        raise HTTPException(status_code=404, detail="Dataset not found") from None
+
+
+@router.get("/ingestions/{ingestion_id}", response_model=IngestionRead)
+def get_ingestion(
+    ingestion_id: UUID, session: Session = Depends(get_session)
+) -> Ingestion:
+    """Lire un dépôt : 404 si l'UUID n'existe pas."""
+    try:
+        return services.get_ingestion(session, ingestion_id)
+    except services.IngestionNotFound:
+        raise HTTPException(status_code=404, detail="Ingestion not found") from None
+
+
+@router.post("/ingestions/{ingestion_id}/retry", response_model=IngestionRead)
+def retry_ingestion(
+    ingestion_id: UUID, session: Session = Depends(get_session)
+) -> Ingestion:
+    """Relancer un dépôt failed : 404 si absent, 409 pour tout autre statut."""
+    try:
+        return services.retry_ingestion(session, ingestion_id)
+    except services.IngestionNotFound:
+        raise HTTPException(status_code=404, detail="Ingestion not found") from None
+    except services.IngestionCannotBeRetried:
+        raise HTTPException(
+            status_code=409, detail="Ingestion cannot be retried"
+        ) from None
+
+
+@router.get("/datasets/{dataset_id}/stats", response_model=StatsRead)
+def dataset_stats(
+    dataset_id: UUID,
+    room: str | None = Query(None),
+    # "from" est réservé en Python : alias query + champ interne from_.
+    from_: datetime | None = Query(None, alias="from"),
+    to: datetime | None = Query(None),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Indicateurs par salle : from inclusif, to exclusif, période validée."""
+    if from_ is not None and (from_.tzinfo is None or from_.utcoffset() is None):
+        raise _naive_datetime_error("from", from_)
+    if to is not None and (to.tzinfo is None or to.utcoffset() is None):
+        raise _naive_datetime_error("to", to)
+    try:
+        return services.dataset_stats(session, dataset_id, room, from_, to)
+    except services.DatasetNotFound:
+        raise HTTPException(status_code=404, detail="Dataset not found") from None
+    except ValueError as exc:
+        if str(exc) != "Invalid period":
+            raise
+        raise HTTPException(status_code=422, detail="Invalid period") from None

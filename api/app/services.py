@@ -1,6 +1,6 @@
-# CONTEXTE ÉTUDIANT : S2 | cas d'utilisation jeux et dépôts
-# À PRÉPARER / ADAPTER : ne pas ajouter les fonctions Tâche 5 ici pour l'instant.
-# CONTRÔLE ATTENDU : F01-F12 hors worker ; conflit de nom en 409, jeu absent en 404.
+# CONTEXTE ÉTUDIANT : S2 | cas d'utilisation jeux, dépôts et indicateurs
+# À PRÉPARER / ADAPTER : garder les exceptions métier traduisibles par routes.py.
+# CONTRÔLE ATTENDU : F01-F12, F20-F24 ; stats en SQL, retry borné à failed.
 #
 """Services métier de CampusData.
 
@@ -11,6 +11,7 @@ ici : les routes traduisent les exceptions métier en codes HTTP.
 """
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
@@ -30,6 +31,14 @@ class DatasetNotFound(Exception):
 
 class DatasetNameAlreadyExists(Exception):
     """Le nom est déjà utilisé par un autre jeu."""
+
+
+class IngestionNotFound(Exception):
+    """Le dépôt demandé n'existe pas."""
+
+
+class IngestionCannotBeRetried(Exception):
+    """Le dépôt n'est pas en failed : la relance est refusée."""
 
 
 def _is_dataset_name_conflict(exc: IntegrityError) -> bool:
@@ -134,3 +143,112 @@ def create_ingestion(
     session.commit()
     session.refresh(ingestion)
     return ingestion
+
+
+def list_ingestions(
+    session: Session, dataset_id: UUID, status: str | None = None
+) -> list[Ingestion]:
+    """Lister les dépôts d'un jeu du plus récent au plus ancien."""
+    if session.get(Dataset, dataset_id) is None:
+        raise DatasetNotFound(f"Dataset not found: {dataset_id}")
+
+    stmt = select(Ingestion).where(Ingestion.dataset_id == dataset_id)
+    if status is not None:
+        # La validation de la valeur est faite par la route (422 avant 404).
+        stmt = stmt.where(Ingestion.status == status)
+    stmt = stmt.order_by(Ingestion.created_at.desc(), Ingestion.id.desc())
+    return list(session.scalars(stmt).all())
+
+
+def get_ingestion(session: Session, ingestion_id: UUID) -> Ingestion:
+    """Charger un dépôt ou lever IngestionNotFound."""
+    ingestion = session.get(Ingestion, ingestion_id)
+    if ingestion is None:
+        raise IngestionNotFound("Ingestion not found")
+    return ingestion
+
+
+def retry_ingestion(session: Session, ingestion_id: UUID) -> Ingestion:
+    """Relancer un dépôt failed ; toute relance réinitialise ses compteurs."""
+    ingestion = session.scalar(
+        select(Ingestion)
+        .where(Ingestion.id == ingestion_id)
+        .with_for_update()
+    )
+    if ingestion is None:
+        raise IngestionNotFound("Ingestion not found")
+    if ingestion.status != "failed":
+        raise IngestionCannotBeRetried("Ingestion cannot be retried")
+
+    # Le contenu BYTEA reste intact : c'est lui que le worker relira.
+    ingestion.status = "pending"
+    ingestion.rows_total = None
+    ingestion.rows_accepted = None
+    ingestion.rows_rejected = None
+    ingestion.rows_duplicate = None
+    ingestion.error_message = None
+    ingestion.started_at = None
+    ingestion.finished_at = None
+    ingestion.errors = []
+    session.commit()
+    session.refresh(ingestion)
+    return ingestion
+
+
+def dataset_stats(
+    session: Session,
+    dataset_id: UUID,
+    room: str | None = None,
+    from_: datetime | None = None,
+    to: datetime | None = None,
+) -> dict:
+    """Agréger les mesures par salle en SQL ; jamais de chargement Python."""
+    # §5 impose la validation des paramètres (422) avant la recherche (404).
+    if from_ is not None and to is not None and from_ >= to:
+        raise ValueError("Invalid period")
+    if session.get(Dataset, dataset_id) is None:
+        raise DatasetNotFound(f"Dataset not found: {dataset_id}")
+
+    aggregates = (
+        Measurement.room.label("room"),
+        func.count(Measurement.id).label("measurements"),
+        func.round(func.avg(Measurement.co2_ppm), 1).label("co2_avg"),
+        func.min(Measurement.co2_ppm).label("co2_min"),
+        func.max(Measurement.co2_ppm).label("co2_max"),
+        func.round(func.avg(Measurement.temperature_c), 1).label("temperature_avg"),
+        func.round(func.avg(Measurement.humidity_pct), 1).label("humidity_avg"),
+        func.max(Measurement.measured_at).label("last_measured_at"),
+    )
+    stmt = select(*aggregates).where(Measurement.dataset_id == dataset_id)
+    if room is not None:
+        stmt = stmt.where(Measurement.room == room)
+    if from_ is not None:
+        stmt = stmt.where(Measurement.measured_at >= from_)
+    if to is not None:
+        # Borne haute exclusive : une mesure à exactement "to" est exclue.
+        stmt = stmt.where(Measurement.measured_at < to)
+    stmt = stmt.group_by(Measurement.room).order_by(Measurement.room)
+
+    rooms: list[dict[str, object]] = []
+    for row in session.execute(stmt).all():
+        rooms.append(
+            {
+                "room": row.room,
+                "measurements": row.measurements,
+                # round() reste en SQL ; float() ne fait que sérialiser Decimal.
+                "co2_avg": float(row.co2_avg),
+                "co2_min": row.co2_min,
+                "co2_max": row.co2_max,
+                "temperature_avg": float(row.temperature_avg),
+                "humidity_avg": float(row.humidity_avg),
+                "last_measured_at": row.last_measured_at,
+            }
+        )
+
+    return {
+        "dataset_id": dataset_id,
+        "room": room,
+        "from": from_,
+        "to": to,
+        "rooms": rooms,
+    }
