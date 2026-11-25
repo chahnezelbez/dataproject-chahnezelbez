@@ -1,18 +1,410 @@
 /* CONTEXTE ÉTUDIANT : S2, styles de votre interface.
    À ADAPTER : mise en page et états visuels sans supprimer les libellés/focus.
    CONTRÔLE : petit écran, clavier et messages lisibles en cas d’erreur. */
-/* Socle de lisibilité ; compléter la mise en page pendant la séance 2.
-   Utiliser des classes pour les états chargement/erreur/vide ; la couleur
-   seule ne doit pas porter une information de statut. Ajouter du texte. */
-:root { font-family: system-ui, sans-serif; color-scheme: light dark; }
-body { margin: 0; line-height: 1.5; }
-/* Une largeur limitée rend les formulaires lisibles sur grand écran.
-   Le padding conserve une marge sur mobile sans largeur fixe débordante. */
-main { max-width: 64rem; margin: 2rem auto; padding: 0 1rem; }
-/* Les contrôles natifs héritent de la police pour une taille cohérente. */
-input, textarea, select, button { font: inherit; }
-button { cursor: pointer; }
-/* Le curseur ne remplace pas l'attribut disabled géré dans le JavaScript. */
-button:disabled { cursor: wait; }
-/* Garder un focus visible et vérifier le contraste en modes clair et sombre. */
-:focus-visible { outline: 3px solid #5684ff; outline-offset: 3px; }
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --bg: #f4f7fb;
+  --surface: #ffffff;
+  --surface-alt: #f8fafc;
+  --text: #162033;
+  --muted: #5b6678;
+  --border: #d8dee9;
+  --primary: #2f5bd8;
+  --primary-strong: #2349b4;
+  --primary-soft: #e7edff;
+  --on-primary: #ffffff;
+  --danger: #b42318;
+  --danger-soft: #fff1f0;
+  --success: #0b7a46;
+  --success-soft: #ecfdf3;
+  --radius: 14px;
+  --shadow: 0 12px 32px rgba(24, 39, 75, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1420;
+    --surface: #171f2e;
+    --surface-alt: #1d2739;
+    --text: #e9eef8;
+    --muted: #aab6c8;
+    --border: #31405a;
+    --primary: #86a9ff;
+    --primary-strong: #a7c1ff;
+    --primary-soft: #1e2d52;
+    --on-primary: #0b1220;
+    --danger: #ff9b91;
+    --danger-soft: #3a2026;
+    --success: #71dfaa;
+    --success-soft: #18372b;
+    --shadow: 0 14px 34px rgba(0, 0, 0, 0.35);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  line-height: 1.5;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 12% 0%, var(--primary-soft), transparent 30rem),
+    var(--bg);
+}
+
+main {
+  width: min(100%, 72rem);
+  margin: 0 auto;
+  padding: clamp(1rem, 3vw, 2.5rem);
+}
+
+h1 {
+  margin: 0 0 0.25rem;
+  font-size: clamp(1.9rem, 4vw, 2.7rem);
+  letter-spacing: -0.03em;
+}
+
+h2 {
+  margin: 0 0 1rem;
+  font-size: 1.3rem;
+}
+
+h3 {
+  margin: 1.5rem 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+p {
+  margin: 0.5rem 0;
+}
+
+#version {
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: right;
+}
+
+#message {
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  font-weight: 600;
+}
+
+main > section {
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+  margin: 1.25rem 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+#dataset-detail {
+  border-top: 4px solid var(--primary);
+}
+
+label {
+  display: block;
+  font-weight: 700;
+  color: var(--text);
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+textarea {
+  min-height: 2.75rem;
+  resize: vertical;
+}
+
+input[type="file"] {
+  padding: 0.5rem;
+  background: var(--surface-alt);
+}
+
+button {
+  padding: 0.6rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--surface-alt);
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+#create-button,
+#upload-button,
+#stats-button {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+#create-button:hover:not(:disabled),
+#upload-button:hover:not(:disabled),
+#stats-button:hover:not(:disabled) {
+  background: var(--primary-strong);
+}
+
+#refresh-ingestions {
+  border-color: var(--border);
+}
+
+button:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
+
+button:not(:disabled):active {
+  transform: translateY(0);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+  box-shadow: none;
+  transform: none;
+}
+
+:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+
+form {
+  display: grid;
+  gap: 0.85rem;
+}
+
+form > div {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+#dataset-form,
+#stats-form {
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  align-items: end;
+}
+
+#dataset-form > div:nth-child(2) {
+  grid-column: 1 / -1;
+}
+
+#create-button,
+#stats-button {
+  justify-self: start;
+}
+
+#upload-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+#upload-form > div {
+  flex: 1 1 18rem;
+}
+
+#ingestions-title + div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+#ingestions-title + div select {
+  width: auto;
+  min-width: 11rem;
+}
+
+#datasets-state,
+#ingestions-state,
+#stats-state,
+#report-state {
+  padding: 0.75rem 1rem;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: var(--surface-alt);
+  color: var(--muted);
+}
+
+:is(#message, #datasets-state, #ingestions-state, #stats-state, #report-state)[role="alert"] {
+  border: 1px solid var(--danger);
+  border-left-width: 5px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-weight: 700;
+}
+
+#ingestion-status {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--primary);
+  border-radius: 10px;
+  background: var(--primary-soft);
+  font-weight: 700;
+}
+
+#detail-count {
+  display: inline-block;
+  padding: 0.2rem 0.75rem;
+  border: 1px solid var(--success);
+  border-radius: 999px;
+  background: var(--success-soft);
+  color: var(--success);
+  font-weight: 800;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+caption {
+  padding: 0.25rem 0 0.75rem;
+  color: var(--muted);
+  font-weight: 700;
+  text-align: left;
+}
+
+th,
+td {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+}
+
+thead th {
+  background: var(--surface-alt);
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+tbody tr:hover {
+  background: var(--surface-alt);
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+th:last-child,
+td:last-child {
+  white-space: nowrap;
+}
+
+tbody button {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.88rem;
+}
+
+tbody button + button {
+  margin-left: 0.4rem;
+}
+
+#report {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-alt);
+}
+
+#report p:first-child {
+  margin-top: 0;
+}
+
+#report ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+#report li + li {
+  margin-top: 0.25rem;
+}
+
+@media (max-width: 720px) {
+  main {
+    padding: 1rem;
+  }
+
+  main > section {
+    padding: 1rem;
+    border-radius: 12px;
+  }
+
+  #version {
+    text-align: left;
+  }
+
+  #dataset-form,
+  #stats-form {
+    grid-template-columns: 1fr;
+  }
+
+  #dataset-form > div:nth-child(2) {
+    grid-column: auto;
+  }
+
+  #upload-form,
+  #ingestions-title + div {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  #ingestions-title + div select {
+    width: 100%;
+  }
+
+  #create-button,
+  #stats-button {
+    justify-self: stretch;
+  }
+
+  th,
+  td {
+    padding: 0.5rem;
+  }
+
+  table {
+    font-size: 0.9rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

@@ -1,45 +1,143 @@
 <!doctype html>
 <html lang="fr">
 <!-- CONTEXTE ÉTUDIANT : S2, page servie par Nginx, pas ouverte en file://.
-     À RÉALISER : jeux de données, dépôt de fichier CSV, suivi des dépôts et indicateurs.
      CONTRÔLE : parcours clavier, états vide/erreur et requêtes vers /api/datasets. -->
 <head>
   <meta charset="utf-8">
-  <!-- Le viewport permet une mise en page adaptée aux petits écrans. -->
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>CampusData</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=2">
 </head>
 <body>
   <main>
     <h1>CampusData</h1>
-    <!-- Conserver une zone de message stable : annoncer succès, attente et
-         erreurs sans obliger l'utilisateur à chercher le résultat ailleurs.
-         role=status convient aux notifications ; prévoir role=alert pour
-         une erreur nécessitant une annonce immédiate. -->
-    <p id="message" role="status">Interface à réaliser en séance 2.</p>
+    <p id="version" role="status">Version : …</p>
+    <p id="message" role="status">Prêt.</p>
 
-    <!-- TODO S2 : formulaire « Nouveau jeu de données ».
-         Chaque champ possède un label relié par for/id.
-         name est obligatoire ; description et owner suivent le contrat commun.
-         Le bouton d'envoi est type=submit ; les actions annexes sont type=button. -->
+    <section aria-labelledby="dataset-form-title">
+      <h2 id="dataset-form-title">Nouveau jeu de données</h2>
+      <form id="dataset-form">
+        <div>
+          <label for="dataset-name">Nom *</label>
+          <input id="dataset-name" name="name" type="text" required minlength="3" maxlength="120">
+        </div>
+        <div>
+          <label for="dataset-description">Description</label>
+          <textarea id="dataset-description" name="description" rows="2" maxlength="2000"></textarea>
+        </div>
+        <div>
+          <label for="dataset-owner">Responsable</label>
+          <input id="dataset-owner" name="owner" type="text" value="Équipe" required minlength="2" maxlength="60">
+        </div>
+        <button id="create-button" type="submit">Créer</button>
+      </form>
+    </section>
 
-    <!-- TODO S2 : liste des jeux de données (nom, responsable, nombre de mesures).
-         Représenter explicitement l'état vide et l'état de chargement.
-         Sélectionner un jeu affiche ses dépôts et ses indicateurs. -->
-    <ul id="datasets"></ul>
+    <section aria-labelledby="datasets-title">
+      <h2 id="datasets-title">Jeux de données</h2>
+      <p id="datasets-state" role="status">Chargement…</p>
+      <table id="datasets-table">
+        <caption>Jeux de données enregistrés</caption>
+        <thead>
+          <tr>
+            <th scope="col">Nom</th>
+            <th scope="col">Responsable</th>
+            <th scope="col">Mesures</th>
+            <th scope="col">Créé le</th>
+            <th scope="col">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="datasets"></tbody>
+      </table>
+    </section>
 
-    <!-- TODO S2 : dépôt d'un fichier CSV pour le jeu sélectionné.
-         <input type="file" accept=".csv,text/csv"> avec un label explicite.
-         Afficher le statut du dépôt (pending, running, succeeded, failed)
-         et les compteurs acceptées / rejetées / doublons une fois traité. -->
+    <section id="dataset-detail" aria-labelledby="detail-title" hidden>
+      <h2 id="detail-title"></h2>
+      <p id="detail-count"></p>
 
-    <!-- TODO S2 : tableau des indicateurs par salle, filtres salle et période.
-         Utiliser <table> avec <caption> et <th scope="col"> ; un tableau vide
-         doit dire qu'aucune mesure ne correspond au filtre.
-         Ajouter la version servie (GET /api/version) pour la recette. -->
+      <form id="upload-form">
+        <div>
+          <label for="csv-file">Déposer un fichier CSV</label>
+          <input id="csv-file" type="file" accept=".csv,text/csv" required>
+        </div>
+        <button id="upload-button" type="submit">Déposer</button>
+      </form>
+      <p id="ingestion-status" role="status">Aucun dépôt en cours.</p>
+
+      <div aria-labelledby="ingestions-title">
+        <h3 id="ingestions-title">Dépôts</h3>
+        <div>
+          <label for="ingestion-filter">Statut</label>
+          <select id="ingestion-filter">
+            <option value="">Tous les statuts</option>
+            <option value="pending">pending</option>
+            <option value="running">running</option>
+            <option value="succeeded">succeeded</option>
+            <option value="failed">failed</option>
+          </select>
+          <button id="refresh-ingestions" type="button">Actualiser</button>
+        </div>
+        <p id="ingestions-state" role="status">Chargement…</p>
+        <table id="ingestions-table" hidden>
+          <caption>Dépôts du jeu</caption>
+          <thead>
+            <tr>
+              <th scope="col">Fichier</th>
+              <th scope="col">Statut</th>
+              <th scope="col">Acceptées</th>
+              <th scope="col">Rejetées</th>
+              <th scope="col">Doublons</th>
+              <th scope="col">Déposé à</th>
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="ingestions"></tbody>
+        </table>
+      </div>
+
+      <div aria-labelledby="report-title">
+        <h3 id="report-title">Rapport</h3>
+        <p id="report-state" role="status">Sélectionnez un dépôt.</p>
+        <div id="report"></div>
+      </div>
+
+      <div aria-labelledby="stats-title">
+        <h3 id="stats-title">Indicateurs</h3>
+        <form id="stats-form">
+          <div>
+            <label for="stats-room">Salle</label>
+            <input id="stats-room" type="text" placeholder="toutes les salles">
+          </div>
+          <div>
+            <label for="stats-from">Du</label>
+            <input id="stats-from" type="datetime-local">
+          </div>
+          <div>
+            <label for="stats-to">Au</label>
+            <input id="stats-to" type="datetime-local">
+          </div>
+          <button id="stats-button" type="submit">Filtrer</button>
+        </form>
+        <p id="stats-state" role="status">Chargement…</p>
+        <table id="stats-table" hidden>
+          <caption>Indicateurs par salle</caption>
+          <thead>
+            <tr>
+              <th scope="col">Salle</th>
+              <th scope="col">Mesures</th>
+              <th scope="col">CO₂ moyen</th>
+              <th scope="col">CO₂ min</th>
+              <th scope="col">CO₂ max</th>
+              <th scope="col">Temp. moy.</th>
+              <th scope="col">Hum. moy.</th>
+              <th scope="col">Dernière mesure</th>
+            </tr>
+          </thead>
+          <tbody id="stats"></tbody>
+        </table>
+      </div>
+    </section>
   </main>
-  <!-- defer diffère l'exécution jusqu'à l'analyse du document HTML. -->
   <script src="app.js" defer></script>
 </body>
 </html>
