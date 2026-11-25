@@ -1,35 +1,46 @@
 # CONTEXTE ÉTUDIANT : S1-S2 | point d’entrée Uvicorn app.main:app
-# À PRÉPARER / ADAPTER : Charger DATABASE_URL avant le lancement. Compléter les TODO selon le contrat.
-# CONTRÔLE ATTENDU : Contrôler live/ready/version, puis les routes métier après votre réalisation.
+# À PRÉPARER / ADAPTER : garder une seule source DB (database.py) et inclure routes.py quand il existe.
+# CONTRÔLE ATTENDU : live 200 sans DB, ready 200 seulement si les 3 tables existent, version inchangée.
 #
-"""Point d'entrée du socle CampusData, à compléter pendant la séance 2.
+"""Point d'entrée de l'API CampusData.
 
-Le starter expose uniquement la santé du processus, l'accès DB et la version.
-Il ne contient ni tables (datasets, ingestions, measurements), ni routes
-métier, ni lecture CSV, ni worker d'ingestion.
-En S2, déplacer la connexion vers database.py et inclure le routeur métier.
-Garder une seule source de configuration pour les probes et les services.
+L'engine et les sessions sont centralisés dans database.py : ce module ne crée
+plus de create_engine local. Les probes peuvent être testés avant la Tâche 3 :
+l'absence de routes.py est tolérée, mais pas une erreur dans ses dépendances.
 """
-import os
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+
+from .database import engine
+
+logger = logging.getLogger(__name__)
 
 # Cette version décrit le contrat OpenAPI ; /api/version identifie la release.
 app = FastAPI(title="CampusData", version="0.1.0")
-# La variable doit exister AVANT l'import du module, y compris sous pytest.
+
+# La variable DATABASE_URL doit exister AVANT l'import du module, y compris sous pytest.
 # Son hôte dépend du contexte : poste = 127.0.0.1 ; Compose/Kubernetes = db.
-# L'engine gère le pool de connexions. Ce n'est pas une Session de transaction.
-engine = create_engine(
-    os.environ["DATABASE_URL"],
-    # Vérifier les connexions sorties du pool aide après une coupure DB.
-    # Cela ne rejoue pas automatiquement une transaction interrompue.
-    pool_pre_ping=True,
-    # Borner l'établissement de connexion ; ce n'est pas un délai global SQL.
-    connect_args={"connect_timeout": 3},
-)
+# Les choix pool_pre_ping et connect_timeout sont expliqués dans database.py.
+
+try:
+    from .routes import router
+except ModuleNotFoundError as exc:
+    # Tâche 3 pas encore faite : seul le module app.routes peut manquer.
+    # Une dépendance interne (app.services, par exemple) doit au contraire
+    # faire échouer le démarrage, sinon on masquerait une vraie erreur.
+    if exc.name != "app.routes":
+        raise
+    logger.warning(
+        "app.routes absent : seules les probes sont disponibles pour l'instant"
+    )
+    router = None
+
+if router is not None:
+    app.include_router(router)
 
 
 @app.get("/health/live")
@@ -42,18 +53,19 @@ def live():
 
 @app.get("/health/ready")
 def ready():
-    """Vérifier la connexion DB ; ajouter le contrôle de table en séance 2."""
+    """Vérifier la connexion DB et l'existence des trois tables métier."""
     try:
         # Le contexte libère la connexion même lorsqu'une exception remonte.
         with engine.connect() as connection:
-            # SELECT 1 prouve une connexion, pas l'existence du schéma métier.
-            # TODO S2 : lire aussi datasets, ingestions et measurements
-            # (SELECT 1 FROM <table> LIMIT 1). Une table vide reste valide.
-            connection.execute(text("SELECT 1"))
+            # SELECT 1 prouve la connexion ET l'existence de la table.
+            # Une table vide reste valide : on ne compte pas ses lignes.
+            # Les trois noms sont littéraux : aucune injection possible ici.
+            connection.execute(text("SELECT 1 FROM datasets LIMIT 1"))
+            connection.execute(text("SELECT 1 FROM ingestions LIMIT 1"))
+            connection.execute(text("SELECT 1 FROM measurements LIMIT 1"))
     except SQLAlchemyError:
         # Réponse publique générique : ne jamais renvoyer le DSN ou le secret.
-        # Cette interception est limitée à la probe. Dans les routes métier, distinguer
-        # indisponibilité DB, conflit métier et erreur de programmation.
+        # Ici, une table absente est aussi une DB indisponible pour l'API.
         raise HTTPException(status_code=503, detail="Database unavailable") from None
     return {"status": "ready"}
 
@@ -67,10 +79,3 @@ def version():
     # La version permet une vérification croisée avec le commit et le digest.
     # Ce champ seul ne prouve pas que toute la recette a été exécutée.
     return {"version": value}
-
-# TODO S2 : models.py, schemas.py, database.py, services.py, routes.py.
-# TODO S2 : ingestion.py (lecture et contrôle du CSV) et worker.py (traitement
-#           des dépôts pending, hors du processus API).
-# TODO S2 : une Session par requête ; fermeture et rollback sur échec.
-# TODO S2 : initialisation explicite dans app/init_db.py, hors démarrage API.
-# TODO S2 : inclure les routeurs /api/datasets et /api/ingestions.
